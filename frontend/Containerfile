@@ -34,5 +34,7 @@ COPY frontend/scripts ./scripts
 
 EXPOSE 3333
 
+HEALTHCHECK --interval=10s --timeout=3s CMD curl -f http://localhost:3333/ || exit 1
+
 ENTRYPOINT ["sh", "./scripts/docker/create-user.sh"]
 CMD ["sh", "./scripts/docker/entrypoint.sh"]

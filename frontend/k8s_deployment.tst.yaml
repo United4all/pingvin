@@ -1,0 +1,171 @@
+---
+# ------------------- Config Map ------------------- #
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: pingvin-frontend-tst-env
+  namespace: ext-tst
+data:
+  BACKEND_PORT: "9000" # Dummy port
+  DATABASE_URL: "file:/var/opt/db/pingvin-share.db?connection_limit=1"
+  DATA_DIRECTORY: "./data"
+  API_URL: "https://file-transfer-be-tst.post.ubf.nl:443"
+  TRUST_PROXY: "true"
+
+---
+# ------------------- Deployment ------------------- #
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: pingvin-frontend-tst
+  namespace: ext-tst
+  labels:
+    k8s-app: pingvin-frontend-tst
+spec:
+  selector:
+    matchLabels:
+      k8s-app: pingvin-frontend-tst
+  replicas: 1
+  revisionHistoryLimit: 1
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        k8s-app: pingvin-frontend-tst
+    spec:
+      containers:
+        - name: pingvin-frontend-tst
+          image: docker-registry.post.ubf.nl/pingvin-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3333
+          envFrom:
+            - configMapRef:
+                name: pingvin-frontend-tst-env
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3333
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3333
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
+          resources: {}
+          volumeMounts:
+            - name: database
+              mountPath: /var/opt/db
+      volumes:
+        - name: database
+          emptyDir: {}
+      imagePullSecrets:
+        - name: creds-docker-registry-post-ubf-nl
+
+---
+# ------------------- Service ------------------- #
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: pingvin-frontend-tst
+  namespace: ext-tst
+  labels:
+    k8s-app: pingvin-frontend-tst
+spec:
+  selector:
+    k8s-app: pingvin-frontend-tst
+  ports:
+    - name: http
+      port: 3333
+      targetPort: 3333
+
+---
+# ------------------- Service ------------------- #
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: pingvin-frontend-pingvin-api-proxy-tst
+  namespace: ext-tst
+  labels:
+    k8s-app: pingvin-frontend-tst
+spec:
+  type: ExternalName
+  externalName: file-transfer-be-tst.post.ubf.nl
+
+---
+# ------------------- Ingress ------------------- #
+
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: pingvin-frontend-tst
+  namespace: ext-tst
+  labels:
+    k8s-app: pingvin-frontend-tst
+  annotations:
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Content-Security-Policy: default-src * data: blob: filesystem: 'unsafe-inline' 'unsafe-eval'";
+spec:
+  ingressClassName: nginx-public-tst
+  tls:
+    - hosts:
+        - file-transfer-tst.nl.emglive.com
+      secretName: sslcert-wildcard-nl-emglive-com
+  rules:
+    - host: file-transfer-tst.nl.emglive.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pingvin-frontend-tst
+                port:
+                  number: 3333
+
+---
+# ------------------- Ingress ------------------- #
+
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: pingvin-frontend-pingvin-api-proxy-tst
+  namespace: ext-tst
+  labels:
+    k8s-app: pingvin-frontend-tst
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 102m
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/upstream-vhost: "file-transfer-be-tst.post.ubf.nl"
+    nginx.ingress.kubernetes.io/rewrite-target: "/api/$1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Content-Security-Policy: default-src * data: blob: filesystem: 'unsafe-inline' 'unsafe-eval'";
+spec:
+  ingressClassName: nginx-public-tst
+  tls:
+    - hosts:
+        - file-transfer-tst.nl.emglive.com
+      secretName: sslcert-wildcard-nl-emglive-com
+  rules:
+    - host: file-transfer-tst.nl.emglive.com
+      http:
+        paths:
+          - path: /api/(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: pingvin-frontend-pingvin-api-proxy-tst
+                port:
+                  number: 443

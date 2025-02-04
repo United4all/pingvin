@@ -30,12 +30,9 @@ COPY --from=frontend-builder /opt/app/public/img /tmp/img
 
 WORKDIR /opt/app
 
-COPY ./reverse-proxy  /opt/app/reverse-proxy
-COPY ./scripts ./scripts
+COPY frontend/scripts ./scripts
 
-EXPOSE 3000
-
-HEALTHCHECK --interval=10s --timeout=3s CMD curl -f http://localhost:3000/api/health || exit 1
+EXPOSE 3333
 
 ENTRYPOINT ["sh", "./scripts/docker/create-user.sh"]
 CMD ["sh", "./scripts/docker/entrypoint.sh"]

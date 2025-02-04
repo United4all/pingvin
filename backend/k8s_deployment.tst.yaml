@@ -18,8 +18,8 @@ spec:
   claimRef:
     namespace: int-tst
     name: pingvin-backend-tst-shares
-  hostPath:
-    # path: "/mnt/MAM-WORKSPACE-TST-01/MAM-WORKSPACE/Pingvin"
+  # hostPath:
+  #   path: "/mnt/MAM-WORKSPACE-TST-01/MAM-WORKSPACE/Pingvin"
   mountOptions:
     - hard
     - nfsvers=4.0

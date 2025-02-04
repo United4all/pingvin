@@ -1,0 +1,226 @@
+---
+# ------------------- Persistent Volume ------------------- #
+
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: pingvin-backend-tst-shares
+  labels:
+    k8s-app: pingvin-backend-tst
+spec:
+  capacity:
+    storage: 10Ti
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: int-tst
+  claimRef:
+    namespace: int-tst
+    name: pingvin-backend-tst-shares
+  hostPath:
+    # path: "/mnt/MAM-WORKSPACE-TST-01/MAM-WORKSPACE/Pingvin"
+  mountOptions:
+    - hard
+    - nfsvers=4.0
+  nfs:
+    path: /mmfs1/DATA-ROOT-01/UPP-ROOT-01/TEST/MAM-WORKSPACE-TST-01/MAM-WORKSPACE/Pingvin/
+    server: MAM-WORKSPACE-TST-01.post.ubf.nl
+
+---
+# ------------------- Persistent Volume Claim ------------------- #
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pingvin-backend-tst-shares
+  namespace: int-tst
+  labels:
+    k8s-app: pingvin-backend-tst
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: int-tst
+  resources:
+    requests:
+      storage: 10Ti
+
+---
+# ------------------- Persistent Volume ------------------- #
+
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: pingvin-backend-tst-database
+  labels:
+    k8s-app: pingvin-backend-tst-database
+spec:
+  capacity:
+    storage: 100Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: int-tst
+  claimRef:
+    namespace: int-tst
+    name: pingvin-backend-tst-database
+  mountOptions:
+    - hard
+    - nfsvers=4.0
+  nfs:
+    path: /mmfs1/DATA-ROOT-01/UPP-ROOT-01/ME-DEVOPS-01/K8S-PV-INT/INT-TST/pingvin-backend-tst/
+    server: ME-DEVOPS-01.post.ubf.nl
+
+---
+# ------------------- Persistent Volume Claim ------------------- #
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pingvin-backend-tst-database
+  namespace: int-tst
+  labels:
+    k8s-app: pingvin-backend-tst
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: int-tst
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+# ------------------- Config Map ------------------- #
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: pingvin-backend-tst-env
+  namespace: int-tst
+data:
+  BACKEND_PORT: "8080"
+  DATABASE_URL: "file:/var/opt/db/pingvin-share.db?connection_limit=1"
+  DATA_DIRECTORY: "./data"
+  API_URL: "http://localhost:8080"
+  TRUST_PROXY: "true"
+  PUID: "4000296"
+  PGID: "4000067"
+
+---
+# ------------------- Deployment ------------------- #
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: pingvin-backend-tst
+  namespace: int-tst
+  labels:
+    k8s-app: pingvin-backend-tst
+spec:
+  selector:
+    matchLabels:
+      k8s-app: pingvin-backend-tst
+  replicas: 1
+  revisionHistoryLimit: 1
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        k8s-app: pingvin-backend-tst
+    spec:
+      containers:
+        - name: pingvin-backend-tst
+          image: docker-registry.post.ubf.nl/pingvin-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: pingvin-backend-tst-env
+          readinessProbe:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                curl -sf http://localhost:8080/api/health | grep -q "OK"
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                curl -sf http://localhost:8080/api/health | grep -q "OK"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources: {}
+          volumeMounts:
+            - name: shares
+              mountPath: /opt/app/backend/data/uploads/shares
+            - name: database
+              mountPath: /var/opt/db
+      volumes:
+        - name: shares
+          persistentVolumeClaim:
+            claimName: pingvin-backend-tst-shares
+        - name: database
+          persistentVolumeClaim:
+            claimName: pingvin-backend-tst-database
+      imagePullSecrets:
+        - name: creds-docker-registry-post-ubf-nl
+
+---
+# ------------------- Service ------------------- #
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: pingvin-backend-tst
+  namespace: int-tst
+  labels:
+    k8s-app: pingvin-backend-tst
+spec:
+  selector:
+    k8s-app: pingvin-backend-tst
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+
+---
+# ------------------- Ingress ------------------- #
+
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: pingvin-backend-tst
+  namespace: int-tst
+  labels:
+    k8s-app: pingvin-backend-tst
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 102m
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Content-Security-Policy: default-src * data: blob: filesystem: 'unsafe-inline' 'unsafe-eval'";
+spec:
+  ingressClassName: nginx-public-tst
+  tls:
+    - hosts:
+        - file-transfer-be-tst.post.ubf.nl
+      secretName: sslcert-wildcard-post-ubf-nl
+  rules:
+    - host: file-transfer-be-tst.post.ubf.nl
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: pingvin-backend-tst
+                port:
+                  number: 8080

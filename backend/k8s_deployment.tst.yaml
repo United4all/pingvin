@@ -104,8 +104,8 @@ data:
   DATA_DIRECTORY: "./data"
   API_URL: "http://localhost:8080"
   TRUST_PROXY: "true"
-  PUID: "4000296"
-  PGID: "4000067"
+  # PUID: "4000296"
+  # PGID: "4000067"
 
 ---
 # ------------------- Deployment ------------------- #
@@ -132,8 +132,12 @@ spec:
     spec:
       containers:
         - name: pingvin-backend-tst
-          image: docker-registry.post.ubf.nl/pingvin-backend:latest
+          # image: docker-registry.post.ubf.nl/pingvin-backend:latest
+          image: stonith404/pingvin-share:latest
           imagePullPolicy: Always
+          workingDir: /opt/app/backend
+          command: ["/bin/sh", "-c"]
+          args: ["npm run prod"]
           ports:
             - name: http
               containerPort: 8080

@@ -38,8 +38,11 @@ spec:
     spec:
       containers:
         - name: pingvin-frontend-tst
-          image: docker-registry.post.ubf.nl/pingvin-frontend:latest
+          image: stonith404/pingvin-share:latest
           imagePullPolicy: Always
+          workingDir: /opt/app/frontend
+          command: ["/bin/sh", "-c"]
+          args: ["PORT=3333 HOSTNAME=0.0.0.0 node server.js"]
           ports:
             - name: http
               containerPort: 3333
